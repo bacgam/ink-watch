@@ -122,26 +122,34 @@ def check_defillama(st, out):
 
 
 def check_subdomains(domain, st, out):
-    """공식 도메인 아래 새 하위 주소의 인증서가 발급되면 out에 추가한다(인증서 공개 기록 crt.sh, 1시간마다).
-    도메인 관리자만 인증서를 받을 수 있으므로 사칭 도메인은 섞이지 않는다."""
+    """공식 도메인 아래 새 하위 주소의 인증서가 발급되면 out에 추가한다(인증서 공개 기록, Cert Spotter API, 1시간마다).
+    도메인 관리자만 인증서를 받을 수 있으므로 사칭 도메인은 섞이지 않는다.
+    crt.sh는 502 장애가 잦아서 Cert Spotter를 쓴다. 마지막으로 본 발급 번호(after) 이후 것만 받는다."""
     now = time.time()
     if now - st.get("checked_at", 0) < 3600:
         return
-    known = st.get("names")
-    url = f"https://crt.sh/?q=%25.{domain}&output=json&deduplicate=Y"
-    if known is not None:  # 첫 실행은 만료 기록까지 전부, 이후엔 유효한 인증서만(새 인증서는 만료 전이므로)
-        url += "&exclude=expired"
-    names = set()
-    for c in get_json(url, timeout=90):
-        for n in c["name_value"].lower().split("\n"):
-            if n == domain or n.endswith("." + domain):
-                names.add(n)
-    if known is not None:
-        for n in sorted(names - set(known)):
+    baseline = "after" not in st  # 처음(또는 crt.sh 시절 상태)이면 기준점만 잡는다
+    known = set(st.get("names", []))
+    names, after = set(), st.get("after")
+    for _ in range(20):  # 한 번에 100건씩
+        url = f"https://api.certspotter.com/v1/issuances?domain={domain}&include_subdomains=true&expand=dns_names"
+        if after:
+            url += f"&after={after}"
+        page = get_json(url)
+        if not page:
+            break
+        for c in page:
+            names.update(n.lower() for n in c["dns_names"] if n.lower() == domain or n.lower().endswith("." + domain))
+        after = page[-1]["id"]
+        if len(page) < 100:
+            break
+    if not baseline:
+        for n in sorted(names - known):
             mark = "🚨" if AIRDROP.search(n) else "🌐"
             # 링크는 사이트가 아니라 인증서 기록. 확인 안 된 사이트에 바로 들어가지 않게
             out.append(f"{mark} [서브도메인] 새 인증서: {n}\nhttps://crt.sh/?q={n}")
-    st["names"] = sorted(set(known or []) | names)
+    st["names"] = sorted(known | names)
+    st["after"] = after
     st["checked_at"] = now
 
 

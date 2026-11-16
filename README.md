@@ -10,7 +10,7 @@ Ink 메인넷·테스트넷의 새 컨트랙트와 GitHub(NADO github.com/nadohq
 | 🆕 | 이름에 Ink, nado, reward가 들어간 새 검증 컨트랙트 |
 | 👛 | NADO 배포자 지갑(메인넷·테스트넷)의 기능 호출. 컨트랙트 배포·머클 루트 등록은 🚨. 단순 전송은 뺌 |
 | 🦙 | DefiLlama에 Ink 체인 프로토콜이 새로 올라옴(1시간마다 확인) |
-| 🌐 | nado.xyz·inkonchain.com 아래 새 하위 주소의 인증서 발급(crt.sh, 1시간마다). 링크는 사이트가 아니라 인증서 기록 |
+| 🌐 | nado.xyz·inkonchain.com 아래 새 하위 주소의 인증서 발급(Cert Spotter API, 1시간마다). 링크는 사이트가 아니라 인증서 기록 |
 | 📝 🌿 🏷️ 📦 | NADO·Ink GitHub 기본 브랜치 새 커밋(저장소당 5건, 나머지는 묶음) / 새 브랜치 / 새 릴리스 / 새 저장소 |
 | ⚠️ ✅ | 수집 3번 연속 실패 / 그 뒤 복구 |
 
