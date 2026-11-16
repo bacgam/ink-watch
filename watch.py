@@ -16,7 +16,8 @@ CHAINS = {
     "Ink 메인넷": "https://explorer.inkonchain.com",
     "Ink 테스트넷": "https://explorer-sepolia.inkonchain.com",
 }
-GITHUB_ORG = "nadohq"
+GITHUB_ORGS = {"nadohq": "NADO", "inkonchain": "Ink"}  # GitHub 조직: 알림에 붙일 이름
+MAX_COMMITS = 5  # 저장소 하나에서 한 번에 따로 알릴 커밋 수. 나머지는 묶어서 알린다
 
 # 에어드랍 신호: 컨트랙트 이름, 커밋 메시지, 바뀐 파일 이름, 브랜치, 릴리스에 이게 있으면 🚨
 AIRDROP = re.compile(r"airdrop|claim|merkle|distribut|vesting|\btge\b|\bpoints\b", re.I)
@@ -61,28 +62,32 @@ def check_chain(chain, base, st, out):
     out.extend(reversed(found))  # 오래된 것부터
 
 
-def check_github(st, out):
-    """nadohq의 새 저장소, 기본 브랜치 새 커밋, 새 브랜치, 새 릴리스를 out에 추가한다."""
+def check_github(org, label, st, out):
+    """org의 새 저장소, 기본 브랜치 새 커밋, 새 브랜치, 새 릴리스를 out에 추가한다.
+    API 호출을 아끼려고 마지막 push 시각(pushed_at)이 바뀐 저장소만 자세히 본다."""
     h = {"Accept": "application/vnd.github+json"}
     if os.environ.get("GITHUB_TOKEN"):
         h["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
-    api = f"https://api.github.com/repos/{GITHUB_ORG}"
+    api = f"https://api.github.com/repos/{org}"
 
     first_run = "repos" not in st
     known = st.setdefault("repos", {})
-    for r in get_json(f"https://api.github.com/orgs/{GITHUB_ORG}/repos?per_page=100", h):
+    for r in get_json(f"https://api.github.com/orgs/{org}/repos?per_page=100", h):
         name = r["name"]
-        tag = f"[NADO/{name}]"
+        tag = f"[{label}/{name}]"
+        rs = known.get(name)
+        if rs is not None and rs.get("pushed_at") == r["pushed_at"]:
+            continue
         commits = get_json(f"{api}/{name}/commits?sha={r['default_branch']}&per_page=30", h) if r["size"] else []
         branches = [b["name"] for b in get_json(f"{api}/{name}/branches?per_page=100", h)]
         releases = get_json(f"{api}/{name}/releases?per_page=10", h)
         new_state = {
+            "pushed_at": r["pushed_at"],
             "head": commits[0]["sha"] if commits else None,
             "branches": branches,
             "releases": [x["id"] for x in releases],
         }
 
-        rs = known.get(name)
         if rs is None:  # 처음 보는 저장소: 기준점만 잡는다
             if not first_run:
                 out.append(f"📦 {tag} 새 공개 저장소\n{r['html_url']}")
@@ -95,7 +100,12 @@ def check_github(st, out):
             if c["sha"] == rs["head"]:
                 break
             new_commits.append(c)
-        for c in reversed(new_commits):
+        rest = new_commits[MAX_COMMITS:]  # 최신순이므로 뒤쪽이 오래된 커밋
+        if rest:
+            mark = "🚨" if any(AIRDROP.search(c["commit"]["message"]) for c in rest) else "📝"
+            found.append(f"{mark} {tag} 커밋 {len(rest)}건 더(아래 최근 {MAX_COMMITS}건 이전)\n"
+                         f"{r['html_url']}/commits/{r['default_branch']}")
+        for c in reversed(new_commits[:MAX_COMMITS]):
             msg = c["commit"]["message"]
             files = [f["filename"] for f in get_json(c["url"], h).get("files", [])]
             hot = [f for f in files if AIRDROP.search(f)]
@@ -135,7 +145,8 @@ def main():
         state = {}
 
     sources = [(c, lambda st, out, c=c, b=b: check_chain(c, b, st, out)) for c, b in CHAINS.items()]
-    sources.append(("NADO GitHub", check_github))
+    for org, label in GITHUB_ORGS.items():
+        sources.append((f"{label} GitHub", lambda st, out, o=org, l=label: check_github(o, l, st, out)))
 
     alerts = []
     for name, fn in sources:

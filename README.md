@@ -1,6 +1,6 @@
 # ink-watch
 
-Ink 메인넷·테스트넷의 새 컨트랙트와 NADO(github.com/nadohq) 변화를 5분마다 확인해 텔레그램으로 알린다. GitHub Actions에서 돌아가므로 내 컴퓨터는 꺼져 있어도 된다.
+Ink 메인넷·테스트넷의 새 컨트랙트와 GitHub(NADO github.com/nadohq, Ink 공식 github.com/inkonchain) 변화를 5분마다 확인해 텔레그램으로 알린다. GitHub Actions에서 돌아가므로 내 컴퓨터는 꺼져 있어도 된다.
 
 ## 무엇을 알리나
 
@@ -8,10 +8,10 @@ Ink 메인넷·테스트넷의 새 컨트랙트와 NADO(github.com/nadohq) 변�
 |---|---|
 | 🚨 | 에어드랍 신호: 이름·커밋·파일·브랜치·릴리스에 airdrop, claim, merkle, distribut, vesting, tge, points |
 | 🆕 | 이름에 Ink, nado, reward가 들어간 새 검증 컨트랙트 |
-| 📝 🌿 🏷️ 📦 | NADO 기본 브랜치 새 커밋 / 새 브랜치 / 새 릴리스 / 새 저장소 |
+| 📝 🌿 🏷️ 📦 | NADO·Ink GitHub 기본 브랜치 새 커밋(저장소당 5건, 나머지는 묶음) / 새 브랜치 / 새 릴리스 / 새 저장소 |
 | ⚠️ ✅ | 수집 실패(처음 한 번만) / 복구 |
 
-키워드는 `watch.py` 위쪽의 `AIRDROP`, `WATCH_NAMES`에서 고친다.
+키워드는 `watch.py` 위쪽의 `AIRDROP`, `WATCH_NAMES`에서, 감시할 GitHub 조직은 `GITHUB_ORGS`에서 고친다.
 
 ## 설정 (처음 한 번)
 
