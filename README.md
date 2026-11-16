@@ -6,12 +6,14 @@ Ink 메인넷·테스트넷의 새 컨트랙트와 GitHub(NADO github.com/nadohq
 
 | 표시 | 내용 |
 |---|---|
-| 🚨 | 에어드랍 신호: 이름·커밋·파일·브랜치·릴리스에 airdrop, claim, merkle, distribut, vesting, tge, points |
+| 🚨 | 에어드랍 신호: 이름·커밋·새로 추가된 코드·파일·브랜치·릴리스에 airdrop, claim, merkle, distribut, vesting, tge, points |
 | 🆕 | 이름에 Ink, nado, reward가 들어간 새 검증 컨트랙트 |
+| 👛 | NADO 배포자 지갑(메인넷·테스트넷)의 기능 호출. 컨트랙트 배포·머클 루트 등록은 🚨. 단순 전송은 뺌 |
+| 🦙 | DefiLlama에 Ink 체인 프로토콜이 새로 올라옴(1시간마다 확인) |
 | 📝 🌿 🏷️ 📦 | NADO·Ink GitHub 기본 브랜치 새 커밋(저장소당 5건, 나머지는 묶음) / 새 브랜치 / 새 릴리스 / 새 저장소 |
 | ⚠️ ✅ | 수집 실패(처음 한 번만) / 복구 |
 
-키워드는 `watch.py` 위쪽의 `AIRDROP`, `WATCH_NAMES`에서, 감시할 GitHub 조직은 `GITHUB_ORGS`에서 고친다.
+키워드는 `watch.py` 위쪽의 `AIRDROP`, `WATCH_NAMES`에서, 감시할 GitHub 조직은 `GITHUB_ORGS`에서, 팀 지갑은 `WALLETS`에서 고친다.
 
 ## 설정 (처음 한 번)
 

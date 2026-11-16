@@ -1,4 +1,4 @@
-"""Ink 메인넷·테스트넷 새 컨트랙트 + NADO GitHub 변화를 감시해 텔레그램으로 알린다.
+"""Ink 새 컨트랙트, 팀 지갑, GitHub, DefiLlama 신규 프로토콜을 감시해 텔레그램으로 알린다.
 
 GitHub Actions에서 5분마다 실행된다. 텔레그램 설정(환경변수)이 없으면 알림을 화면에 출력만 한다.
 마지막으로 본 위치는 state.json에 저장한다. 처음 실행할 때는 기준점만 잡고 알림을 보내지 않는다.
@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -16,6 +17,11 @@ CHAINS = {
     "Ink 메인넷": "https://explorer.inkonchain.com",
     "Ink 테스트넷": "https://explorer-sepolia.inkonchain.com",
 }
+# 팀 지갑: (체인, 주소, 알림에 붙일 이름). 출처: NADO 공식 SDK @nadohq/shared 의 deployer 값
+WALLETS = [
+    ("Ink 메인넷", "0xC1cC56caB60e832665E6c3780BfEBe3C1C971603", "NADO 배포자"),
+    ("Ink 테스트넷", "0x59841b3761Ed1D089a783E4d7CB49E4534CD4F85", "NADO 테스트넷 배포자"),
+]
 GITHUB_ORGS = {"nadohq": "NADO", "inkonchain": "Ink"}  # GitHub 조직: 알림에 붙일 이름
 MAX_COMMITS = 5  # 저장소 하나에서 한 번에 따로 알릴 커밋 수. 나머지는 묶어서 알린다
 
@@ -60,6 +66,56 @@ def check_chain(chain, base, st, out):
 
     st["last_verified_at"] = newest
     out.extend(reversed(found))  # 오래된 것부터
+
+
+def check_wallet(chain, addr, label, st, out):
+    """팀 지갑이 보낸 거래 중 컨트랙트 배포와 기능 호출을 out에 추가한다. 단순 토큰 전송은 뺀다."""
+    base = CHAINS[chain]
+    txs = [t for t in get_json(f"{base}/api/v2/addresses/{addr}/transactions?filter=from")["items"]
+           if t.get("block_number")]
+    if not txs:
+        return
+    newest = txs[0]["block_number"]
+    last = st.get("last_block")
+    if last is None:  # 첫 실행: 기준점만 잡는다
+        st["last_block"] = newest
+        return
+
+    found = []
+    for t in txs:
+        if t["block_number"] <= last:
+            break
+        method = t.get("method") or ""
+        made = t.get("created_contract")
+        if made:
+            name = made.get("name") or made["hash"]
+            found.append(f"🚨 [{chain}] {label}: 새 컨트랙트 배포 {name}\n{base}/address/{made['hash']}")
+        elif method and method not in ("transfer", "0xa9059cbb"):  # 0xa9059cbb = transfer
+            to = t.get("to") or {}
+            impl = (to.get("implementations") or [{}])[0].get("name")  # 프록시면 실제 코드 이름
+            target = impl or to.get("name") or to.get("hash", "")
+            mark = "🚨" if AIRDROP.search(method + " " + target) else "👛"
+            found.append(f"{mark} [{chain}] {label}: {method} → {target}\n{base}/tx/{t['hash']}")
+
+    st["last_block"] = newest
+    out.extend(reversed(found))
+
+
+def check_defillama(st, out):
+    """DefiLlama에 Ink 체인 프로토콜이 새로 올라오면 out에 추가한다. 목록이 약 10MB라 1시간에 한 번만 본다."""
+    now = time.time()
+    if now - st.get("checked_at", 0) < 3600:
+        return
+    ink = {p["slug"]: p for p in get_json("https://api.llama.fi/protocols") if "Ink" in (p.get("chains") or [])}
+    known = st.get("slugs")
+    if known is not None:
+        for slug, p in ink.items():
+            if slug not in known:
+                out.append(f"🦙 [DefiLlama] Ink에 새 프로토콜: {p['name']} "
+                           f"({p.get('category') or '-'}, TVL ${p.get('tvl') or 0:,.0f})\n"
+                           f"https://defillama.com/protocol/{slug}")
+    st["slugs"] = sorted(set(known or []) | set(ink))
+    st["checked_at"] = now
 
 
 def check_github(org, label, st, out):
@@ -107,12 +163,20 @@ def check_github(org, label, st, out):
                          f"{r['html_url']}/commits/{r['default_branch']}")
         for c in reversed(new_commits[:MAX_COMMITS]):
             msg = c["commit"]["message"]
-            files = [f["filename"] for f in get_json(c["url"], h).get("files", [])]
-            hot = [f for f in files if AIRDROP.search(f)]
-            mark = "🚨" if hot or AIRDROP.search(msg) else "📝"
+            files = get_json(c["url"], h).get("files", [])
+            hot = [f["filename"] for f in files if AIRDROP.search(f["filename"])]
+            hits = []  # 새로 추가된 코드 줄에 에어드랍 단어가 있는지 (파일당 첫 줄만)
+            for f in files:
+                for ln in (f.get("patch") or "").splitlines():
+                    if ln.startswith("+") and AIRDROP.search(ln):
+                        hits.append(f"{f['filename']}: {ln[1:].strip()[:80]}")
+                        break
+            mark = "🚨" if hot or hits or AIRDROP.search(msg) else "📝"
             line = f"{mark} {tag} 커밋: {msg.splitlines()[0]}\n{c['html_url']}"
             if hot:
                 line += "\n관련 파일: " + ", ".join(hot[:5])
+            if hits:
+                line += "\n추가된 코드: " + " / ".join(hits[:3])
             found.append(line)
         for b in branches:
             if b not in rs["branches"]:
@@ -145,8 +209,11 @@ def main():
         state = {}
 
     sources = [(c, lambda st, out, c=c, b=b: check_chain(c, b, st, out)) for c, b in CHAINS.items()]
+    for chain, addr, label in WALLETS:
+        sources.append((f"{chain} {label}", lambda st, out, c=chain, a=addr, l=label: check_wallet(c, a, l, st, out)))
     for org, label in GITHUB_ORGS.items():
         sources.append((f"{label} GitHub", lambda st, out, o=org, l=label: check_github(o, l, st, out)))
+    sources.append(("DefiLlama", check_defillama))
 
     alerts = []
     for name, fn in sources:
