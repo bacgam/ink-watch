@@ -255,8 +255,8 @@ def main():
             if st["fails"] == 3:
                 alerts.append(f"⚠️ {name} 수집 3번 연속 실패: {e!r}")
 
-    # Actions 탭에서 수동 실행하면 새 소식이 없어도 확인 메시지를 보낸다(텔레그램 설정 점검용)
-    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" and not alerts:
+    # Actions 탭에서 수동 실행하면 새 소식이 없어도 확인 메시지를 보낸다(텔레그램 설정 점검용). 외부 알람(QUIET)은 제외
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" and os.environ.get("QUIET") != "true" and not alerts:
         alerts.append("✅ ink-watch 수동 실행 완료: 새 소식 없음")
 
     # 텔레그램 메시지 한도(4096자) 안에서 묶어 보낸다
