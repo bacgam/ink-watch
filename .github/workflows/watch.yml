@@ -2,7 +2,7 @@ name: ink-watch
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # 5분마다 (GitHub 사정으로 몇 분 밀릴 수 있음)
+    - cron: "3-59/5 * * * *"   # 5분마다(매시 3·8·13…분). 정각은 GitHub이 붐벼 실행이 밀리거나 빠지므로 피함
   workflow_dispatch:         # Actions 탭에서 수동 실행
 
 concurrency:
