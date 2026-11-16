@@ -7,7 +7,7 @@ Ink 메인넷·테스트넷의 새 컨트랙트와 GitHub(NADO github.com/nadohq
 | 표시 | 내용 |
 |---|---|
 | 🚨 | 에어드랍 신호: 이름·커밋·새로 추가된 코드·파일·브랜치·릴리스에 airdrop, claim, merkle, distribut, vesting, tge, points |
-| 🆕 | 이름에 Ink, nado, reward가 들어간 새 검증 컨트랙트 |
+| 🆕 | 이름에 Ink, nado, reward가 들어간 새 검증 컨트랙트. 🚨 컨트랙트 알림에는 배포 시점·배포자(⭐ 팀 지갑)·잔고를 붙임 |
 | 👛 | NADO 배포자 지갑(메인넷·테스트넷)의 기능 호출. 컨트랙트 배포·머클 루트 등록은 🚨. 단순 전송은 뺌 |
 | 🦙 | DefiLlama에 Ink 체인 프로토콜이 새로 올라옴(1시간마다 확인) |
 | 🌐 | nado.xyz·inkonchain.com 아래 새 하위 주소의 인증서 발급(Cert Spotter API, 1시간마다). 링크는 사이트가 아니라 인증서 기록 |

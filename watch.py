@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timedelta
 import urllib.parse
 import urllib.request
 
@@ -40,6 +41,45 @@ def get_json(url, headers=None, timeout=30):
         return json.load(r)
 
 
+def kst_date(iso):
+    return (datetime.fromisoformat(iso.replace("Z", "+00:00")) + timedelta(hours=9)).strftime("%Y-%m-%d")
+
+
+def amount(v):
+    return f"{v:,.2f}" if v >= 1 else f"{v:.4g}"
+
+
+def describe_contract(base, addr, verified_at):
+    """🚨 컨트랙트 알림에 붙일 판단 근거 한 줄: 배포 시점, 배포자(팀 지갑인지), 잔고."""
+    api = f"{base}/api/v2"
+    team = {a.lower(): label for _, a, label in WALLETS}
+    a = get_json(f"{api}/addresses/{addr}")
+    parts = []
+    if a.get("creation_transaction_hash"):
+        made = kst_date(get_json(f"{api}/transactions/{a['creation_transaction_hash']}")["timestamp"])
+        ver = kst_date(verified_at)
+        parts.append(f"배포 {made}" + (f"(검증은 {ver})" if made != ver else ""))
+    creator = a.get("creator_address_hash") or ""
+    if creator.lower() in team:
+        parts.append(f"배포자 ⭐ {team[creator.lower()]}")
+    elif creator:
+        c = get_json(f"{api}/addresses/{creator}")
+        if c.get("is_contract"):
+            parts.append(f"배포자 컨트랙트 {c.get('name') or creator[:10]}")
+        else:
+            n = get_json(f"{api}/addresses/{creator}/counters").get("transactions_count")
+            parts.append(f"배포자 개인 지갑(거래 {n}건)")
+    bal = []
+    eth = int(a.get("coin_balance") or 0) / 1e18
+    if eth:
+        bal.append(f"{amount(eth)} ETH")
+    for t in get_json(f"{api}/addresses/{addr}/token-balances")[:3]:
+        tok = t["token"]
+        bal.append(f"{amount(int(t['value']) / 10 ** int(tok.get('decimals') or 0))} {tok.get('symbol') or '?'}")
+    parts.append("잔고 " + (", ".join(bal) if bal else "없음"))
+    return " · ".join(parts)
+
+
 def check_chain(chain, base, st, out):
     """검증된 새 컨트랙트 중 이름이 키워드에 걸린 것을 out에 추가한다."""
     url = f"{base}/api/v2/smart-contracts"
@@ -59,8 +99,14 @@ def check_chain(chain, base, st, out):
                 break
             name = c["address"].get("name") or ""
             if name not in IGNORE_NAMES and (AIRDROP.search(name) or WATCH_NAMES.search(name)):
-                mark = "🚨" if AIRDROP.search(name) else "🆕"
-                found.append(f"{mark} [{chain}] 새 컨트랙트: {name}\n{base}/address/{c['address']['hash']}")
+                addr = c["address"]["hash"]
+                line = f"{'🚨' if AIRDROP.search(name) else '🆕'} [{chain}] 새 컨트랙트: {name}\n"
+                if AIRDROP.search(name):  # 이름은 누구나 지을 수 있으므로 판단 근거를 붙인다
+                    try:
+                        line += describe_contract(base, addr, c["verified_at"]) + "\n"
+                    except Exception as e:
+                        line += f"추가 정보 조회 실패: {e!r}\n"
+                found.append(line + f"{base}/address/{addr}")
         else:
             if page.get("next_page_params"):
                 page = get_json(url + "?" + urllib.parse.urlencode(page["next_page_params"]))
