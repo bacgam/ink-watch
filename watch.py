@@ -50,7 +50,7 @@ def amount(v):
 
 
 def describe_contract(base, addr, verified_at):
-    """🚨 컨트랙트 알림에 붙일 판단 근거 한 줄: 배포 시점, 배포자(팀 지갑인지), 잔고."""
+    """새 컨트랙트 알림(🆕·🚨)에 붙일 판단 근거 한 줄: 배포 시점, 배포자(팀 지갑인지), 잔고."""
     api = f"{base}/api/v2"
     team = {a.lower(): label for _, a, label in WALLETS}
     a = get_json(f"{api}/addresses/{addr}")
@@ -101,11 +101,10 @@ def check_chain(chain, base, st, out):
             if name not in IGNORE_NAMES and (AIRDROP.search(name) or WATCH_NAMES.search(name)):
                 addr = c["address"]["hash"]
                 line = f"{'🚨' if AIRDROP.search(name) else '🆕'} [{chain}] 새 컨트랙트: {name}\n"
-                if AIRDROP.search(name):  # 이름은 누구나 지을 수 있으므로 판단 근거를 붙인다
-                    try:
-                        line += describe_contract(base, addr, c["verified_at"]) + "\n"
-                    except Exception as e:
-                        line += f"추가 정보 조회 실패: {e!r}\n"
+                try:  # 이름은 누구나 지을 수 있으므로 판단 근거를 붙인다
+                    line += describe_contract(base, addr, c["verified_at"]) + "\n"
+                except Exception as e:
+                    line += f"추가 정보 조회 실패: {e!r}\n"
                 found.append(line + f"{base}/address/{addr}")
         else:
             if page.get("next_page_params"):
