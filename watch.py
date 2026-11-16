@@ -30,6 +30,8 @@ MAX_COMMITS = 5  # 저장소 하나에서 한 번에 따로 알릴 커밋 수. �
 AIRDROP = re.compile(r"airdrop|claim|merkle|distribut|vesting|\btge\b|\bpoints\b", re.I)
 # 그 밖에 알릴 컨트랙트 이름. 'ink'는 Link·Blink에 섞이므로 대문자 Ink/INK 또는 단어 앞의 ink만 본다
 WATCH_NAMES = re.compile(r"(?i:reward|nado)|Ink|INK|(?<![A-Za-z])ink")
+# 연습·튜토리얼용으로 자주 쓰이는 이름. 정확히 이 이름이면 알리지 않는다
+IGNORE_NAMES = {"InkContract"}
 
 
 def get_json(url, headers=None, timeout=30):
@@ -56,7 +58,7 @@ def check_chain(chain, base, st, out):
             if c["verified_at"] <= last:
                 break
             name = c["address"].get("name") or ""
-            if AIRDROP.search(name) or WATCH_NAMES.search(name):
+            if name not in IGNORE_NAMES and (AIRDROP.search(name) or WATCH_NAMES.search(name)):
                 mark = "🚨" if AIRDROP.search(name) else "🆕"
                 found.append(f"{mark} [{chain}] 새 컨트랙트: {name}\n{base}/address/{c['address']['hash']}")
         else:
