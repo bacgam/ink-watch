@@ -23,6 +23,7 @@ WALLETS = [
     ("Ink 테스트넷", "0x59841b3761Ed1D089a783E4d7CB49E4534CD4F85", "NADO 테스트넷 배포자"),
 ]
 GITHUB_ORGS = {"nadohq": "NADO", "inkonchain": "Ink"}  # GitHub 조직: 알림에 붙일 이름
+DOMAINS = ["nado.xyz", "inkonchain.com"]  # 새 하위 주소(인증서)를 감시할 공식 도메인
 MAX_COMMITS = 5  # 저장소 하나에서 한 번에 따로 알릴 커밋 수. 나머지는 묶어서 알린다
 
 # 에어드랍 신호: 컨트랙트 이름, 커밋 메시지, 바뀐 파일 이름, 브랜치, 릴리스에 이게 있으면 🚨
@@ -31,9 +32,9 @@ AIRDROP = re.compile(r"airdrop|claim|merkle|distribut|vesting|\btge\b|\bpoints\b
 WATCH_NAMES = re.compile(r"(?i:reward|nado)|Ink|INK|(?<![A-Za-z])ink")
 
 
-def get_json(url, headers=None):
+def get_json(url, headers=None, timeout=30):
     req = urllib.request.Request(url, headers={"User-Agent": "ink-watch", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.load(r)
 
 
@@ -115,6 +116,30 @@ def check_defillama(st, out):
                            f"({p.get('category') or '-'}, TVL ${p.get('tvl') or 0:,.0f})\n"
                            f"https://defillama.com/protocol/{slug}")
     st["slugs"] = sorted(set(known or []) | set(ink))
+    st["checked_at"] = now
+
+
+def check_subdomains(domain, st, out):
+    """공식 도메인 아래 새 하위 주소의 인증서가 발급되면 out에 추가한다(인증서 공개 기록 crt.sh, 1시간마다).
+    도메인 관리자만 인증서를 받을 수 있으므로 사칭 도메인은 섞이지 않는다."""
+    now = time.time()
+    if now - st.get("checked_at", 0) < 3600:
+        return
+    known = st.get("names")
+    url = f"https://crt.sh/?q=%25.{domain}&output=json&deduplicate=Y"
+    if known is not None:  # 첫 실행은 만료 기록까지 전부, 이후엔 유효한 인증서만(새 인증서는 만료 전이므로)
+        url += "&exclude=expired"
+    names = set()
+    for c in get_json(url, timeout=90):
+        for n in c["name_value"].lower().split("\n"):
+            if n == domain or n.endswith("." + domain):
+                names.add(n)
+    if known is not None:
+        for n in sorted(names - set(known)):
+            mark = "🚨" if AIRDROP.search(n) else "🌐"
+            # 링크는 사이트가 아니라 인증서 기록. 확인 안 된 사이트에 바로 들어가지 않게
+            out.append(f"{mark} [서브도메인] 새 인증서: {n}\nhttps://crt.sh/?q={n}")
+    st["names"] = sorted(set(known or []) | names)
     st["checked_at"] = now
 
 
@@ -214,19 +239,21 @@ def main():
     for org, label in GITHUB_ORGS.items():
         sources.append((f"{label} GitHub", lambda st, out, o=org, l=label: check_github(o, l, st, out)))
     sources.append(("DefiLlama", check_defillama))
+    for d in DOMAINS:
+        sources.append((f"서브도메인 {d}", lambda st, out, d=d: check_subdomains(d, st, out)))
 
     alerts = []
     for name, fn in sources:
         st = state.setdefault(name, {})
         try:
             fn(st, alerts)
-            if st.pop("failing", False):
+            if st.pop("fails", 0) >= 3:
                 alerts.append(f"✅ {name} 수집 복구")
-        except Exception as e:  # 한 곳이 실패해도 나머지는 계속. 실패는 처음 한 번만 알린다
+        except Exception as e:  # 한 곳이 실패해도 나머지는 계속. 일시 장애는 넘기고 3번 연속 실패 때만 알린다
             print(f"{name} 실패: {e!r}", file=sys.stderr)
-            if not st.get("failing"):
-                st["failing"] = True
-                alerts.append(f"⚠️ {name} 수집 실패: {e!r}")
+            st["fails"] = st.get("fails", 0) + 1
+            if st["fails"] == 3:
+                alerts.append(f"⚠️ {name} 수집 3번 연속 실패: {e!r}")
 
     # Actions 탭에서 수동 실행하면 새 소식이 없어도 확인 메시지를 보낸다(텔레그램 설정 점검용)
     if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" and not alerts:
