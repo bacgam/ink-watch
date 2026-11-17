@@ -33,6 +33,8 @@ AIRDROP = re.compile(r"airdrop|claim|merkle|distribut|vesting|\btge\b|\bpoints\b
 WATCH_NAMES = re.compile(r"(?i:reward|nado)|Ink|INK|(?<![A-Za-z])ink")
 # 연습·튜토리얼용으로 자주 쓰이는 이름. 정확히 이 이름이면 알리지 않는다
 IGNORE_NAMES = {"InkContract"}
+# 토큰 만들기 예제의 기본 이름(기호만 jigsa·zem 등으로 바꿔 대량 배포됨). 토큰 기호가 INK일 때만 알린다
+TEMPLATE_TOKEN_NAMES = {"InkToken"}
 
 
 def get_json(url, headers=None, timeout=30):
@@ -47,6 +49,13 @@ def kst_date(iso):
 
 def amount(v):
     return f"{v:,.2f}" if v >= 1 else f"{v:.4g}"
+
+
+def token_symbol(base, addr):
+    try:
+        return (get_json(f"{base}/api/v2/tokens/{addr}").get("symbol") or "").upper()
+    except Exception:
+        return "INK"  # 확인 못 하면 놓치지 않도록 알리는 쪽으로
 
 
 def describe_contract(base, addr, verified_at):
@@ -100,6 +109,8 @@ def check_chain(chain, base, st, out):
             name = c["address"].get("name") or ""
             if name not in IGNORE_NAMES and (AIRDROP.search(name) or WATCH_NAMES.search(name)):
                 addr = c["address"]["hash"]
+                if name in TEMPLATE_TOKEN_NAMES and token_symbol(base, addr) != "INK":
+                    continue
                 line = f"{'🚨' if AIRDROP.search(name) else '🆕'} [{chain}] 새 컨트랙트: {name}\n"
                 try:  # 이름은 누구나 지을 수 있으므로 판단 근거를 붙인다
                     line += describe_contract(base, addr, c["verified_at"]) + "\n"
