@@ -8,7 +8,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import urllib.parse
 import urllib.request
 
@@ -35,6 +35,8 @@ WATCH_NAMES = re.compile(r"(?i:reward|nado)|Ink|INK|(?<![A-Za-z])ink")
 IGNORE_NAMES = {"InkContract"}
 # 토큰 만들기 예제의 기본 이름(기호만 jigsa·zem 등으로 바꿔 대량 배포됨). 토큰 기호가 INK일 때만 알린다
 TEMPLATE_TOKEN_NAMES = {"InkToken"}
+# 팀 지갑이 배포하지 않았고, 배포 후 이 일수가 지나도록 잔고·거래·토큰 이동이 없으면 방치된 것으로 보고 알리지 않는다
+DORMANT_DAYS = 7
 
 
 def get_json(url, headers=None, timeout=30):
@@ -59,17 +61,21 @@ def token_symbol(base, addr):
 
 
 def describe_contract(base, addr, verified_at):
-    """새 컨트랙트 알림(🆕·🚨)에 붙일 판단 근거 한 줄: 배포 시점, 배포자(팀 지갑인지), 잔고."""
+    """새 컨트랙트 알림(🆕·🚨)에 붙일 판단 근거 한 줄: 배포 시점, 배포자(팀 지갑인지), 잔고.
+    팀 지갑이 배포하지 않았는데 오래 방치된 컨트랙트면 None(알리지 않음)."""
     api = f"{base}/api/v2"
     team = {a.lower(): label for _, a, label in WALLETS}
     a = get_json(f"{api}/addresses/{addr}")
     parts = []
+    made_ts = None
     if a.get("creation_transaction_hash"):
-        made = kst_date(get_json(f"{api}/transactions/{a['creation_transaction_hash']}")["timestamp"])
+        made_ts = get_json(f"{api}/transactions/{a['creation_transaction_hash']}")["timestamp"]
+        made = kst_date(made_ts)
         ver = kst_date(verified_at)
         parts.append(f"배포 {made}" + (f"(검증은 {ver})" if made != ver else ""))
     creator = a.get("creator_address_hash") or ""
-    if creator.lower() in team:
+    is_team = creator.lower() in team
+    if is_team:
         parts.append(f"배포자 ⭐ {team[creator.lower()]}")
     elif creator:
         c = get_json(f"{api}/addresses/{creator}")
@@ -86,6 +92,13 @@ def describe_contract(base, addr, verified_at):
         tok = t["token"]
         bal.append(f"{amount(int(t['value']) / 10 ** int(tok.get('decimals') or 0))} {tok.get('symbol') or '?'}")
     parts.append("잔고 " + (", ".join(bal) if bal else "없음"))
+    if not is_team:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(made_ts.replace("Z", "+00:00")) if made_ts else None
+        if not bal and age and age > timedelta(days=DORMANT_DAYS):
+            cnt = get_json(f"{api}/addresses/{addr}/counters")
+            if int(cnt.get("transactions_count") or 0) == 0 and int(cnt.get("token_transfers_count") or 0) == 0:
+                return None
+        parts.insert(0, "⚠️ 팀 지갑 아님")
     return " · ".join(parts)
 
 
@@ -111,11 +124,13 @@ def check_chain(chain, base, st, out):
                 addr = c["address"]["hash"]
                 if name in TEMPLATE_TOKEN_NAMES and token_symbol(base, addr) != "INK":
                     continue
-                line = f"{'🚨' if AIRDROP.search(name) else '🆕'} [{chain}] 새 컨트랙트: {name}\n"
                 try:  # 이름은 누구나 지을 수 있으므로 판단 근거를 붙인다
-                    line += describe_contract(base, addr, c["verified_at"]) + "\n"
+                    info = describe_contract(base, addr, c["verified_at"])
                 except Exception as e:
-                    line += f"추가 정보 조회 실패: {e!r}\n"
+                    info = f"추가 정보 조회 실패: {e!r}"
+                if info is None:  # 방치된 개인 컨트랙트
+                    continue
+                line = f"{'🚨' if AIRDROP.search(name) else '🆕'} [{chain}] 새 컨트랙트: {name}\n{info}\n"
                 found.append(line + f"{base}/address/{addr}")
         else:
             if page.get("next_page_params"):
